@@ -1,8 +1,8 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 
-export async function supabaseServer() {
-  const cookieStore = await cookies();
+export function supabaseServer() {
+  const cookieStore = cookies();
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,9 +13,9 @@ export async function supabaseServer() {
           return cookieStore.getAll();
         },
         setAll(cookiesToSet) {
+          // In some Next.js contexts cookieStore is typed "readonly",
+          // but route handlers can set cookies at runtime.
           cookiesToSet.forEach(({ name, value, options }) => {
-            // In some contexts Next types are "readonly" but runtime supports set in Route Handlers.
-            // Cast keeps TS happy.
             (cookieStore as any).set(name, value, options);
           });
         },
