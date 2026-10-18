@@ -14,12 +14,18 @@ export default function BillingPage() {
   const supabase = useMemo(() => supabaseBrowser(), []);
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
   const [paid, setPaid] = useState(false);
+  const [active, setActive] = useState(false);
 
   useEffect(() => {
     setPaid(new URLSearchParams(window.location.search).get("paid") === "1");
     supabase.auth.getSession().then(({ data }) => {
       const u = data.session?.user;
-      if (u) setUser({ id: u.id, email: u.email ?? undefined });
+      if (!u) return;
+      setUser({ id: u.id, email: u.email ?? undefined });
+      fetch("/api/business", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((b) => setActive(!!b?.access))
+        .catch(() => {});
     });
   }, [supabase]);
 
@@ -49,7 +55,26 @@ export default function BillingPage() {
 
       <main className="flex flex-1 items-center justify-center py-10">
         <div className="w-full max-w-lg bg-paper px-6 py-8 shadow-[0_18px_40px_-22px_rgba(27,36,48,0.45)] sm:px-8">
-          {paid ? (
+          {active && !paid ? (
+            <>
+              <h1 className="wide text-3xl font-extrabold tracking-tight">Your plan is active</h1>
+              <p className="mt-4 leading-relaxed text-ink-soft">You have full access to Prepline.</p>
+              {BRAND.billingPortal && (
+                <a
+                  href={BRAND.billingPortal}
+                  className="mt-6 inline-block font-semibold underline underline-offset-2"
+                >
+                  Update your card, see receipts or cancel
+                </a>
+              )}
+              <Link
+                href="/app"
+                className="mt-8 block w-fit rounded-md bg-ink px-5 py-3 font-semibold text-paper hover:bg-monday-deep"
+              >
+                Go to the app
+              </Link>
+            </>
+          ) : paid ? (
             <>
               <h1 className="wide text-3xl font-extrabold tracking-tight">Payment received</h1>
               <p className="mt-4 leading-relaxed text-ink-soft">

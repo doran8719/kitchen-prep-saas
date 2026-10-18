@@ -60,6 +60,22 @@ export async function getMyConnection(
 }
 
 /**
+ * Has this user paid (or is their kitchen comped)? See my_access() in
+ * supabase/migrations/002_billing.sql. PAYWALL=off skips the check (local testing only).
+ */
+export async function hasAccess(supabase: SupabaseClient): Promise<boolean> {
+  if (process.env.PAYWALL === "off") return true;
+  const { data, error } = await supabase.rpc("my_access");
+  if (error) {
+    if (/my_access/.test(error.message)) {
+      throw new Error("The database isn't set up for billing yet. Run supabase/migrations/002_billing.sql.");
+    }
+    throw new Error(error.message);
+  }
+  return data === true;
+}
+
+/**
  * Local development only: use the WOO_* variables in .env.local when the
  * logged-in user has no business yet. Turned on with ALLOW_ENV_STORE=true.
  * Never set it on the live site, or every new account would see that store.

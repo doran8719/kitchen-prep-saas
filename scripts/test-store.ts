@@ -10,6 +10,9 @@ import { defaultWeek, orderWeeks } from "../src/lib/prep/weeks";
 import { orders, products } from "./fixtures";
 import { seal, open } from "../src/lib/secret-box";
 import { normalizeStoreUrl } from "../src/lib/woo/client";
+import { verifyStripeSignature } from "../src/lib/stripe-signature";
+import { POST as stripeWebhook } from "../app/api/stripe/webhook/route";
+import { createHmac } from "node:crypto";
 
 // ---- fake fetch
 const calls: string[] = [];
@@ -57,7 +60,7 @@ const sb = (status: string | null, user = true, hasBusiness = true) => {
   });
   return {
     auth: { getUser: async () => ({ data: { user: user ? { id: "u1" } : null } }) },
-    rpc: async () => ({ data: null, error: null }),
+    rpc: async (fn: string) => ({ data: fn === "my_access" ? status === "active" : null, error: null }),
     from: (t: string) => chain(t),
   };
 };
@@ -87,6 +90,21 @@ process.env.REQUIRE_SUBSCRIPTION = "true";
   assert.equal(normalizeStoreUrl("http://www.x.com"), "https://www.x.com");
   for (const bad of ["localhost:3000", "http://127.0.0.1", "intranet", "https://db.internal", ""]) assert.equal(normalizeStoreUrl(bad), null, bad);
   console.log("business gate + key encryption: OK");
+
+  // Stripe webhook signature
+  const whsec = "whsec_test123";
+  const evBody = JSON.stringify({ id: "evt_1", type: "checkout.session.completed", data: { object: {} } });
+  const t = Math.floor(Date.now() / 1000);
+  const sig = createHmac("sha256", whsec).update(`${t}.${evBody}`).digest("hex");
+  assert.ok(verifyStripeSignature(evBody, `t=${t},v1=${sig}`, whsec), "valid signature");
+  assert.ok(!verifyStripeSignature(evBody + " ", `t=${t},v1=${sig}`, whsec), "tampered body");
+  assert.ok(!verifyStripeSignature(evBody, `t=${t},v1=${sig}`, "whsec_other"), "wrong secret");
+  assert.ok(!verifyStripeSignature(evBody, `t=${t - 3600},v1=${createHmac("sha256", whsec).update(`${t - 3600}.${evBody}`).digest("hex")}`, whsec), "too old");
+  assert.ok(!verifyStripeSignature(evBody, null, whsec), "missing header");
+  process.env.STRIPE_WEBHOOK_SECRET = whsec;
+  const bad = await stripeWebhook(new Request("http://x/api/stripe/webhook", { method: "POST", body: evBody, headers: { "stripe-signature": `t=${t},v1=deadbeef` } }));
+  assert.equal(bad.status, 400, "forged webhook rejected");
+  console.log("stripe webhook signature: OK");
 
   const res = await GET(new Request("http://x/api/prep/orders?from=2026-10-12&to=2026-10-17&gapFrom=2026-10-11"));
   const body = await res.json();

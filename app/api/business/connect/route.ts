@@ -5,7 +5,7 @@
 
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/src/lib/supabase-server";
-import { getMyBusiness } from "@/src/lib/business";
+import { getMyBusiness, hasAccess } from "@/src/lib/business";
 import { seal } from "@/src/lib/secret-box";
 import { normalizeStoreUrl, testConnection, WooError } from "@/src/lib/woo/client";
 import { presetForStoreUrl } from "@/src/lib/prep/presets";
@@ -20,6 +20,14 @@ export async function POST(request: Request) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Please log in again." }, { status: 401 });
+
+  try {
+    if (!(await hasAccess(supabase))) {
+      return NextResponse.json({ error: "Subscribe first, then connect your store. Go to Billing." }, { status: 402 });
+    }
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Couldn't check your plan." }, { status: 500 });
+  }
 
   let body: Record<string, unknown>;
   try {

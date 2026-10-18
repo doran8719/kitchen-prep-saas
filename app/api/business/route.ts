@@ -3,7 +3,7 @@
 
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/src/lib/supabase-server";
-import { getMyBusiness, getMyConnection, devEnvStore } from "@/src/lib/business";
+import { getMyBusiness, getMyConnection, devEnvStore, hasAccess } from "@/src/lib/business";
 
 export const dynamic = "force-dynamic";
 
@@ -16,16 +16,18 @@ export async function GET() {
 
   try {
     const business = await getMyBusiness(supabase, user);
+    const access = await hasAccess(supabase);
     if (!business) {
       const dev = devEnvStore();
       return NextResponse.json({
         business: null,
         connection: null,
         devStore: dev ? { storeUrl: dev.url } : null,
+        access: access || !!dev,
       });
     }
     const conn = await getMyConnection(supabase, business.id);
-    return NextResponse.json({ business, connection: conn?.info ?? null, devStore: null });
+    return NextResponse.json({ business, connection: conn?.info ?? null, devStore: null, access });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Couldn't load your account." }, { status: 500 });
   }

@@ -35,6 +35,30 @@ export default function Workspace() {
   }
   if (!info) return <p className="text-white/60">Loading your kitchen…</p>;
 
+  if (!info.access) {
+    const staff = info.business && info.business.role !== "owner";
+    return (
+      <div className="rounded-2xl border border-white/15 bg-white/5 p-6 md:p-8">
+        <h2 className="wide text-2xl font-extrabold tracking-tight">
+          {staff ? `${info.business!.name}'s plan isn't active` : "Start your plan"}
+        </h2>
+        <p className="mt-2 max-w-[38rem] leading-relaxed text-white/65">
+          {staff
+            ? "Ask the account owner to check billing. The prep sheet works again as soon as the plan is active."
+            : "Subscribe to connect your store and build your weekly prep sheet. Already paid? It can take a minute to show up. Refresh this page."}
+        </p>
+        {!staff && (
+          <a
+            href="/billing"
+            className="mt-6 inline-block rounded-xl bg-white px-5 py-2.5 font-semibold text-ink hover:bg-tape"
+          >
+            Go to billing
+          </a>
+        )}
+      </div>
+    );
+  }
+
   if (preset) {
     return (
       <>

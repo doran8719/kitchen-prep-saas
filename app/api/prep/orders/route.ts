@@ -3,14 +3,14 @@
 // Pulls that week's orders and the relevant products from the store.
 // gapFrom: days before the window that belong to no week (e.g. the Sunday before).
 // Orders placed then aren't counted, but are reported so nothing slips through.
-// Logged-in users only, reading their own business's store (plus an active
-// subscription when REQUIRE_SUBSCRIPTION=true).
+// Logged-in users only, reading their own business's store, and only once
+// they've paid (or their kitchen is comped).
 
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/src/lib/supabase-server";
 import { COUNTED_STATUSES, linesFromWooOrders } from "@/src/lib/prep/input";
 import { presetFor } from "@/src/lib/prep/presets";
-import { devEnvStore, getMyBusiness, getMyConnection } from "@/src/lib/business";
+import { devEnvStore, getMyBusiness, getMyConnection, hasAccess } from "@/src/lib/business";
 import { fetchOrdersBetween, fetchProducts, WooError, type WooConfig } from "@/src/lib/woo/client";
 
 export const dynamic = "force-dynamic";
@@ -18,17 +18,22 @@ export const dynamic = "force-dynamic";
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function GET(request: Request) {
-  // 1) Same gate as the app page: logged in + active subscription.
+  // 1) Logged in.
   const supabase = await supabaseServer();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Please log in again." }, { status: 401 });
 
-  // Subscription check only once Stripe is set up (REQUIRE_SUBSCRIPTION=true).
-  if (process.env.REQUIRE_SUBSCRIPTION === "true") {
-    const { data: sub } = await supabase.from("subscriptions").select("status").eq("user_id", user.id).maybeSingle();
-    if (sub?.status !== "active") return NextResponse.json({ error: "No active subscription." }, { status: 402 });
+  // Paid (or comped)? A local env store (ALLOW_ENV_STORE) skips this.
+  if (!devEnvStore()) {
+    try {
+      if (!(await hasAccess(supabase))) {
+        return NextResponse.json({ error: "Your subscription isn't active. Go to Billing to subscribe." }, { status: 402 });
+      }
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : "Couldn't check your plan." }, { status: 500 });
+    }
   }
 
   // 2) Validate the week.
