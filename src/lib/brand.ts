@@ -6,10 +6,12 @@ export const BRAND = {
   name: "Prepline",
   /** Who runs the service, for the legal pages. */
   legalEntity: "Presence Media",
-  /** Shown in the footer and legal pages. Set NEXT_PUBLIC_CONTACT_EMAIL once the domain's inbox exists. */
-  contactEmail: process.env.NEXT_PUBLIC_CONTACT_EMAIL || "hello@prepline.app",
-  /** "Run my orders free" goes here: a Calendly (or similar) booking page. */
-  demoUrl: process.env.NEXT_PUBLIC_DEMO_URL || "",
+  /** Public site address. */
+  siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "https://www.getprepline.com",
+  /** Shown in the footer and legal pages. Forwards to Kyle's inbox (ImprovMX). */
+  contactEmail: process.env.NEXT_PUBLIC_CONTACT_EMAIL || "hello@getprepline.com",
+  /** "Run my orders free" goes here: the Calendly booking page. */
+  demoUrl: process.env.NEXT_PUBLIC_DEMO_URL || "https://calendly.com/getprepline/30min",
   /** Stripe Payment Link for the Founding plan ($499 setup + $99/mo). */
   paymentLink: process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK || "",
   /** Stripe's hosted page where customers update their card or cancel. */

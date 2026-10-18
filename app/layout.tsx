@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   },
   description:
     "Prepline reads the week's orders from your WooCommerce store and tells you how much of each protein to pull, split by how it's prepped.",
-  metadataBase: process.env.NEXT_PUBLIC_SITE_URL ? new URL(process.env.NEXT_PUBLIC_SITE_URL) : undefined,
+  metadataBase: new URL(BRAND.siteUrl),
   openGraph: {
     title: `${BRAND.name}: the weekly prep sheet for meal prep kitchens`,
     description: "Your week's orders, turned into what to pull: pounds of each protein, by prep type and meal size.",
