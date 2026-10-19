@@ -37,10 +37,18 @@ export default function LoginPage() {
 
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: `${window.location.origin}/login` },
+        });
         if (error) throw error;
-        // With email confirmation on, signUp doesn't create a session yet.
-        setMsg("Account created. Check your email for a confirmation link, then log in here.");
+        // Email confirmation off: signed in already. On: they confirm by email first.
+        if (data.session) {
+          router.replace("/app");
+          return;
+        }
+        setMsg("Account created. We've emailed you a confirmation link. Click it, then log in here.");
         return;
       }
 
