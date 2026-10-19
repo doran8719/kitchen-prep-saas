@@ -24,7 +24,7 @@ export function demoHref() {
 
 export const PLANS = [
   { name: "Founding", price: 99, note: "First 10 kitchens. Price locked for 12 months.", includes: "Everything in Standard, in exchange for feedback" },
-  { name: "Standard", price: 149, note: "One kitchen, one store.", includes: "Store connection, weekly prep sheet and PDF, Sunday email" },
+  { name: "Standard", price: 149, note: "One kitchen, one store.", includes: "Store connection, weekly prep sheet and printable PDF" },
   { name: "Managed", price: 249, note: "We keep it set up for you.", includes: "Standard, plus we update your menu setup each week and help with phone orders" },
 ] as const;
 
