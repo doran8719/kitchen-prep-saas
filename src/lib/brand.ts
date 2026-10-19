@@ -11,7 +11,7 @@ export const BRAND = {
   /** Shown in the footer and legal pages. Forwards to Kyle's inbox (ImprovMX). */
   contactEmail: process.env.NEXT_PUBLIC_CONTACT_EMAIL || "hello@getprepline.com",
   /** "Run my orders free" goes here: the Calendly booking page. */
-  demoUrl: process.env.NEXT_PUBLIC_DEMO_URL || "https://calendly.com/getprepline/30min",
+  demoUrl: process.env.NEXT_PUBLIC_DEMO_URL || "https://calendly.com/getprepline/20min",
   /** Stripe Payment Link for the Founding plan ($499 setup + $99/mo). */
   paymentLink: process.env.NEXT_PUBLIC_STRIPE_PAYMENT_LINK || "https://buy.stripe.com/4gMfZigzIdZ9baJ4eH3F602",
   /** Stripe's hosted page where customers update their card or cancel. */
