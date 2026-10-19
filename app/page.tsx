@@ -21,7 +21,7 @@ const COUNTS = [
 const STEPS = [
   [
     "Connect your store",
-    "You make a read-only key in WooCommerce. Prepline can see orders and products. It can't change anything, and it doesn't read customer names or addresses.",
+    "You give Prepline read-only access to your store's orders. It can't change anything, and it doesn't read customer names or addresses.",
   ],
   [
     "Set up your menu once",
@@ -36,7 +36,7 @@ const STEPS = [
 const FAQ = [
   [
     "Which stores does it work with?",
-    "WooCommerce today. If you sell through Shopify, Square or something else, tell us. We build the next connection for whoever asks first.",
+    "WooCommerce connects directly. Custom-built sites connect through our order feed, which your developer can add in about an hour. On Shopify, Square or something else? You can upload a weekly order export from day one, and we connect your store during setup.",
   ],
   [
     "What about orders taken over the phone?",
@@ -48,7 +48,7 @@ const FAQ = [
   ],
   [
     "Can Prepline change anything in my store?",
-    "No. The key it uses can only read. You can delete it in WooCommerce at any time and Prepline stops working right away.",
+    "No. Its access is read-only, and you can revoke it in your store at any time.",
   ],
   ["Is there a contract?", "No. Plans are monthly and you can cancel any time. The setup fee is paid once."],
 ] as const;
@@ -68,7 +68,7 @@ export default function Home() {
               Your weekly prep sheet, counted for you.
             </h1>
             <p className="mt-6 max-w-[34rem] text-lg leading-relaxed text-ink-soft">
-              {BRAND.name} reads the week&apos;s orders from your WooCommerce store and tells you how much of each
+              {BRAND.name} reads the week&apos;s orders from your online store and tells you how much of each
               protein to pull, split by how it&apos;s prepped and by meal size. The tally that takes an afternoon with
               a calculator takes about a minute.
             </p>

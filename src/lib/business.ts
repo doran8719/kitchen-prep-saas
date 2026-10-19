@@ -6,6 +6,12 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { open } from "@/src/lib/secret-box";
 import { wooConfigFromEnv, type WooConfig } from "@/src/lib/woo/client";
+import type { FeedConfig } from "@/src/lib/feed/feed";
+
+export type Platform = "woocommerce" | "feed";
+
+/** How to reach a kitchen's orders. */
+export type StoreConfig = { platform: "woocommerce"; woo: WooConfig } | { platform: "feed"; feed: FeedConfig };
 
 export interface MyBusiness {
   id: string;
@@ -15,6 +21,7 @@ export interface MyBusiness {
 }
 
 export interface MyConnection {
+  platform: Platform;
   storeUrl: string;
   menuCategory: string | null;
   connectedAt: string;
@@ -45,18 +52,21 @@ export async function getMyBusiness(supabase: SupabaseClient, user: User): Promi
 export async function getMyConnection(
   supabase: SupabaseClient,
   businessId: string
-): Promise<{ info: MyConnection; cfg: WooConfig } | null> {
+): Promise<{ info: MyConnection; cfg: StoreConfig } | null> {
   const { data, error } = await supabase
     .from("store_connections")
-    .select("store_url, key_enc, secret_enc, menu_category, connected_at")
+    .select("platform, store_url, key_enc, secret_enc, menu_category, connected_at")
     .eq("business_id", businessId)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
-  return {
-    info: { storeUrl: data.store_url, menuCategory: data.menu_category, connectedAt: data.connected_at },
-    cfg: { url: data.store_url, key: open(data.key_enc), secret: open(data.secret_enc) },
-  };
+  const platform: Platform = data.platform === "feed" ? "feed" : "woocommerce";
+  const info = { platform, storeUrl: data.store_url, menuCategory: data.menu_category, connectedAt: data.connected_at };
+  const cfg: StoreConfig =
+    platform === "feed"
+      ? { platform, feed: { url: data.store_url, key: open(data.key_enc) } }
+      : { platform, woo: { url: data.store_url, key: open(data.key_enc), secret: open(data.secret_enc) } };
+  return { info, cfg };
 }
 
 /**

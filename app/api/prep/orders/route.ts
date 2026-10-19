@@ -11,7 +11,18 @@ import { supabaseServer } from "@/src/lib/supabase-server";
 import { COUNTED_STATUSES, linesFromWooOrders } from "@/src/lib/prep/input";
 import { presetFor } from "@/src/lib/prep/presets";
 import { devEnvStore, getMyBusiness, getMyConnection, hasAccess } from "@/src/lib/business";
-import { fetchOrdersBetween, fetchProducts, WooError, type WooConfig } from "@/src/lib/woo/client";
+import { fetchOrdersBetween, fetchProducts, WooError } from "@/src/lib/woo/client";
+import type { StoreConfig } from "@/src/lib/business";
+import type { OrderLine } from "@/src/lib/prep/types";
+import type { StoreProduct } from "@/src/lib/prep/store-menu";
+import {
+  FeedError,
+  fetchFeed,
+  feedOrderDate,
+  feedStatusCounts,
+  linesFromFeedOrders,
+  storeProductsFromFeed,
+} from "@/src/lib/feed/feed";
 
 export const dynamic = "force-dynamic";
 
@@ -51,19 +62,22 @@ export async function GET(request: Request) {
   if (days > 31) return NextResponse.json({ error: "Pick a range of a month or less." }, { status: 400 });
 
   // 3) This user's store.
-  let cfg: WooConfig | null = null;
-  let menuCategory = presetFor("standard").catalog.store.menuCategory;
+  let cfg: StoreConfig | null = null;
+  let store = presetFor("standard").catalog.store;
   try {
     const business = await getMyBusiness(supabase, user);
     if (business) {
       const conn = await getMyConnection(supabase, business.id);
       if (conn) {
         cfg = conn.cfg;
-        menuCategory = presetFor(business.preset, { menuCategory: conn.info.menuCategory }).catalog.store.menuCategory;
+        store = presetFor(business.preset, { menuCategory: conn.info.menuCategory }).catalog.store;
       }
     } else {
-      cfg = devEnvStore();
-      if (cfg) menuCategory = presetFor("hungry-house").catalog.store.menuCategory;
+      const dev = devEnvStore();
+      if (dev) {
+        cfg = { platform: "woocommerce", woo: dev };
+        store = presetFor("hungry-house").catalog.store;
+      }
     }
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Couldn't load your store." }, { status: 500 });
@@ -72,40 +86,51 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Your store isn't connected yet." }, { status: 409 });
   }
 
+  // 4) Orders from whichever platform, in one shape.
+  type Summary = { id: number | string; date: string; status: string; counts: boolean };
+  let summaries: Summary[];
+  let lines: OrderLine[];
+  let products: StoreProduct[];
+
   try {
-    const fetched = await fetchOrdersBetween(cfg, gapFrom || from, to);
-    const inWindow = (o: { date_created: string }) => o.date_created.slice(0, 10) >= from;
-    const orders = fetched.filter(inWindow);
-    const gapOrders = fetched.filter((o) => !inWindow(o) && COUNTED_STATUSES.includes(o.status));
-    const lines = linesFromWooOrders(orders);
-    const products = await fetchProducts(
-      cfg,
-      lines.map((l) => l.productId || 0),
-      menuCategory
-    );
-
-    const skipped: Record<string, number> = {};
-    for (const o of orders) if (!COUNTED_STATUSES.includes(o.status)) skipped[o.status] = (skipped[o.status] || 0) + 1;
-
-    return NextResponse.json({
-      from,
-      to,
-      fetchedAt: new Date().toISOString(),
-      ordersCounted: orders.length - Object.values(skipped).reduce((a, b) => a + b, 0),
-      ordersSkipped: skipped,
-      // Paid orders placed in the gap before the window (not counted in any week).
-      gapOrders: gapOrders.map((o) => ({ id: o.id, date: o.date_created.slice(0, 10) })),
-      lines,
-      products,
-    });
+    if (cfg.platform === "feed") {
+      const feed = await fetchFeed(cfg.feed, gapFrom || from, to);
+      const inRange = feed.orders.filter((o) => feedOrderDate(o) <= to);
+      summaries = inRange.map((o) => ({ id: o.id, date: feedOrderDate(o), status: String(o.status).toLowerCase(), counts: feedStatusCounts(o.status) }));
+      lines = linesFromFeedOrders(inRange.filter((o) => feedOrderDate(o) >= from));
+      products = storeProductsFromFeed(feed.products, store.attributes);
+    } else {
+      const fetched = await fetchOrdersBetween(cfg.woo, gapFrom || from, to);
+      summaries = fetched.map((o) => ({ id: o.id, date: o.date_created.slice(0, 10), status: o.status, counts: COUNTED_STATUSES.includes(o.status) }));
+      lines = linesFromWooOrders(fetched.filter((o) => o.date_created.slice(0, 10) >= from));
+      products = await fetchProducts(cfg.woo, lines.map((l) => l.productId || 0), store.menuCategory);
+    }
   } catch (e) {
-    const status = e instanceof WooError ? 502 : 500;
-    const msg =
-      e instanceof WooError && (e.status === 401 || e.status === 403)
-        ? "The store rejected the API key. Check it's a Read key and copied correctly."
-        : e instanceof Error
-          ? e.message
-          : "Couldn't reach the store.";
-    return NextResponse.json({ error: msg }, { status });
+    const rejected = (e instanceof WooError || e instanceof FeedError) && (e.status === 401 || e.status === 403);
+    const msg = rejected
+      ? cfg.platform === "feed"
+        ? "Your site rejected the feed key. Check the key matches in Prepline and on your site."
+        : "The store rejected the API key. Check it's a Read key and copied correctly."
+      : e instanceof Error
+        ? e.message
+        : "Couldn't reach the store.";
+    return NextResponse.json({ error: msg }, { status: e instanceof WooError || e instanceof FeedError ? 502 : 500 });
   }
+
+  const inWindow = summaries.filter((o) => o.date >= from);
+  const skipped: Record<string, number> = {};
+  for (const o of inWindow) if (!o.counts) skipped[o.status] = (skipped[o.status] || 0) + 1;
+
+  return NextResponse.json({
+    from,
+    to,
+    platform: cfg.platform,
+    fetchedAt: new Date().toISOString(),
+    ordersCounted: inWindow.filter((o) => o.counts).length,
+    ordersSkipped: skipped,
+    // Paid orders placed in the gap before the window (not counted in any week).
+    gapOrders: summaries.filter((o) => o.date < from && o.counts).map((o) => ({ id: o.id, date: o.date })),
+    lines,
+    products,
+  });
 }

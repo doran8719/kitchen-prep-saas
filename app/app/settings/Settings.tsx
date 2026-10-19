@@ -41,6 +41,7 @@ export default function Settings() {
           needsName={false}
           initialUrl={c?.storeUrl}
           initialMenuCategory={c?.menuCategory ?? ""}
+          initialPlatform={c?.platform ?? "woocommerce"}
           onConnected={() => {
             setReconnect(false);
             reload();
@@ -52,6 +53,8 @@ export default function Settings() {
           <h2 className="text-lg font-semibold">Store</h2>
           {c ? (
             <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
+              <dt className="text-white/55">Connected through</dt>
+              <dd>{c.platform === "feed" ? "Prepline order feed" : "WooCommerce"}</dd>
               <dt className="text-white/55">Address</dt>
               <dd>{c.storeUrl}</dd>
               <dt className="text-white/55">Menu category</dt>

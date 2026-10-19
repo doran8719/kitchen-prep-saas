@@ -46,6 +46,9 @@ export function SiteFooter() {
           <Wordmark className="text-ink" /> <span className="ml-2">is made by {BRAND.legalEntity}.</span>
         </p>
         <nav className="flex flex-wrap gap-x-5 gap-y-2">
+          <Link href="/docs/order-feed" className="hover:text-ink">
+            For developers
+          </Link>
           <Link href="/terms" className="hover:text-ink">
             Terms
           </Link>

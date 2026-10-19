@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 
 export type BusinessInfo = {
   business: { id: string; name: string; preset: string; role: "owner" | "staff" } | null;
-  connection: { storeUrl: string; menuCategory: string | null; connectedAt: string } | null;
+  connection: { platform: "woocommerce" | "feed"; storeUrl: string; menuCategory: string | null; connectedAt: string } | null;
   /** Local development: the store in .env.local (ALLOW_ENV_STORE=true). */
   devStore: { storeUrl: string } | null;
   /** Paid, or their kitchen is comped. */

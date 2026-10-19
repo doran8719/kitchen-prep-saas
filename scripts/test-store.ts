@@ -13,6 +13,7 @@ import { normalizeStoreUrl } from "../src/lib/woo/client";
 import { verifyStripeSignature } from "../src/lib/stripe-signature";
 import { POST as stripeWebhook } from "../app/api/stripe/webhook/route";
 import { createHmac } from "node:crypto";
+import { linesFromFeedOrders, numericId, storeProductsFromFeed, normalizeFeedUrl, fetchFeed } from "../src/lib/feed/feed";
 
 // ---- fake fetch
 const calls: string[] = [];
@@ -47,11 +48,11 @@ const sealedConn = {
   menu_category: null,
   connected_at: "2026-10-18T00:00:00Z",
 };
-const sb = (status: string | null, user = true, hasBusiness = true) => {
+const sb = (status: string | null, user = true, hasBusiness = true, conn: any = sealedConn) => {
   const rows: Record<string, any> = {
     subscriptions: status ? { status } : null,
     business_members: hasBusiness ? { role: "owner", businesses: { id: "b1", name: "Hungry House", preset: "hungry-house" } } : null,
-    store_connections: hasBusiness ? sealedConn : null,
+    store_connections: hasBusiness ? conn : null,
   };
   const chain = (table: string): any => ({
     select: () => chain(table),
@@ -105,6 +106,83 @@ process.env.REQUIRE_SUBSCRIPTION = "true";
   const bad = await stripeWebhook(new Request("http://x/api/stripe/webhook", { method: "POST", body: evBody, headers: { "stripe-signature": `t=${t},v1=deadbeef` } }));
   assert.equal(bad.status, 400, "forged webhook rejected");
   console.log("stripe webhook signature: OK");
+
+  // Prepline order feed
+  const feedOrders = [
+    { id: "A1", status: "paid", createdAt: "2026-10-12T09:00:00-06:00", items: [
+      { productId: "bulgogi", name: "Bulgogi Chicken", size: "Medium 6oz", quantity: 2, options: { Extras: "Extra Protein (+2oz)" }, note: "no sesame" },
+    ] },
+    { id: "A2", status: "refunded", createdAt: "2026-10-13T09:00:00-06:00", items: [{ name: "Bulgogi Chicken", size: "Large 8oz", quantity: 5 }] },
+  ];
+  const fl = linesFromFeedOrders(feedOrders as any);
+  assert.equal(fl.length, 1, "refunded skipped");
+  assert.equal(fl[0].itemName, "Bulgogi Chicken - Medium 6oz");
+  assert.equal(fl[0].qty, 2);
+  assert.equal(fl[0].meta.extras, "Extra Protein (+2oz)");
+  assert.equal(fl[0].meta.portions, "Medium 6oz");
+  assert.equal(fl[0].meta["special requests"], "no sesame");
+  assert.equal(fl[0].productId, numericId("bulgogi"));
+  assert.equal(numericId("123"), 123);
+  const fp = storeProductsFromFeed([{ id: "bulgogi", name: "Bulgogi Chicken", categories: ["Current Menu"], protein: "Chicken", prepType: "Grilled" }],
+    { protein: "Protein", prep: "Prep Type", starch: "Starch", sides: "Sides" });
+  assert.deepEqual(fp[0].attributes, { Protein: ["Chicken"], "Prep Type": ["Grilled"] });
+  assert.equal(normalizeFeedUrl("kitchen.com/api/prepline/orders?x=1"), "https://kitchen.com/api/prepline/orders");
+  assert.equal(normalizeFeedUrl("http://localhost:3000/api"), null);
+
+  // feed paging + auth header, via the fake fetch
+  const realFetch = (globalThis as any).fetch;
+  const seen: string[] = [];
+  (globalThis as any).fetch = async (url: string, init?: any) => {
+    seen.push(url);
+    assert.equal(init.headers.Authorization, "Bearer feedkey-1234567890");
+    const u = new URL(url);
+    const page2 = u.searchParams.get("page") === "2";
+    return new Response(JSON.stringify(page2
+      ? { orders: [feedOrders[1]], next: "https://evil.example/steal" }
+      : { orders: [feedOrders[0]], products: [{ id: "bulgogi", name: "Bulgogi Chicken" }], next: "/api/prepline/orders?from=2026-10-12&to=2026-10-18&page=2" }), { status: 200 });
+  };
+  const feed = await fetchFeed({ url: "https://kitchen.com/api/prepline/orders", key: "feedkey-1234567890" }, "2026-10-12", "2026-10-18");
+  assert.equal(feed.orders.length, 2, "followed next page");
+  assert.equal(seen.length, 2, "didn't follow a link to another site");
+  assert.ok(seen[0].includes("from=2026-10-12") && seen[0].includes("to=2026-10-18"));
+
+  // the orders route, reading a feed-connected kitchen
+  seen.length = 0;
+  (globalThis as any).__sb = sb("active", true, true, {
+    platform: "feed",
+    store_url: "https://kitchen.com/api/prepline/orders",
+    key_enc: seal("feedkey-1234567890"),
+    secret_enc: seal(""),
+    menu_category: null,
+    connected_at: "2026-10-18T00:00:00Z",
+  });
+  (globalThis as any).fetch = async (url: string, init?: any) => {
+    seen.push(url);
+    assert.equal(init.headers.Authorization, "Bearer feedkey-1234567890");
+    return new Response(JSON.stringify({
+      orders: [
+        { id: "S0", status: "paid", createdAt: "2026-10-11T18:00:00-06:00", items: [{ name: "Bulgogi Chicken", size: "Small 4oz", quantity: 1 }] },
+        ...feedOrders,
+      ],
+      products: [{ id: "bulgogi", name: "Bulgogi Chicken", categories: ["Current Menu"], protein: "Chicken", prepType: "Grilled" }],
+    }), { status: 200 });
+  };
+  const fr = await GET(new Request("http://x/api/prep/orders?from=2026-10-12&to=2026-10-18&gapFrom=2026-10-11"));
+  const fb = await fr.json();
+  assert.equal(fr.status, 200, JSON.stringify(fb));
+  assert.equal(fb.platform, "feed");
+  assert.equal(fb.ordersCounted, 1);
+  assert.deepEqual(fb.ordersSkipped, { refunded: 1 });
+  assert.deepEqual(fb.gapOrders, [{ id: "S0", date: "2026-10-11" }]);
+  assert.equal(fb.lines.length, 1);
+  const fm = menuFromStoreProducts(fb.products, catalog, { weekLabel: "Feed", ordersWeekStart: "2026-10-12" });
+  const fres = calculateFromLines(fb.lines, "store", withBatches(catalog, fm.batches), fm.menu);
+  const chicken = fres.entrees.find((e) => e.category === "chicken")!;
+  assert.equal(chicken.sizes.M.meals, 2);
+  assert.equal(chicken.sizes.M.oz, 12);
+  (globalThis as any).fetch = realFetch;
+  (globalThis as any).__sb = sb("active");
+  console.log("order feed: OK (incl. route + calculation)");
 
   const res = await GET(new Request("http://x/api/prep/orders?from=2026-10-12&to=2026-10-17&gapFrom=2026-10-11"));
   const body = await res.json();
